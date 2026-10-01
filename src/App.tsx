@@ -8,8 +8,8 @@ import {
   Clock3,
   Edit3,
   FileCheck2,
-  PackageOpen,
   Plus,
+  RotateCcw,
   Search,
   ShieldCheck,
   Store,
@@ -51,11 +51,12 @@ function App() {
     product: "",
     category: "Tümü",
     status: "all" as "all" | WarrantyStatus,
-    purchaseDate: "",
-    expiryDate: "",
+    purchaseStart: "",
+    purchaseEnd: "",
+    expiryStart: "",
+    expiryEnd: "",
     store: "",
-    minPrice: "",
-    maxPrice: "",
+    price: "",
   });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<WarrantyItem | null>(null);
@@ -90,39 +91,47 @@ function App() {
   const filtered = useMemo(() => {
     const normalizedProduct = filters.product.toLocaleLowerCase("tr-TR").trim();
     const normalizedStore = filters.store.toLocaleLowerCase("tr-TR").trim();
+    const normalizedPrice = filters.price.replace(/\D/g, "");
     const result = items.filter(item => {
       const expiryDate = addMonths(item.purchaseDate, item.warrantyMonths).toISOString().slice(0, 10);
       const matchesProduct = !normalizedProduct || [item.name, item.brand, item.model]
         .join(" ").toLocaleLowerCase("tr-TR").includes(normalizedProduct);
       const matchesStatus = filters.status === "all" || getStatus(item) === filters.status;
       const matchesCategory = filters.category === "Tümü" || item.category === filters.category;
-      const matchesPurchase = !filters.purchaseDate || item.purchaseDate === filters.purchaseDate;
-      const matchesExpiry = !filters.expiryDate || expiryDate === filters.expiryDate;
+      const matchesPurchaseStart = !filters.purchaseStart || item.purchaseDate >= filters.purchaseStart;
+      const matchesPurchaseEnd = !filters.purchaseEnd || item.purchaseDate <= filters.purchaseEnd;
+      const matchesExpiryStart = !filters.expiryStart || expiryDate >= filters.expiryStart;
+      const matchesExpiryEnd = !filters.expiryEnd || expiryDate <= filters.expiryEnd;
       const matchesStore = !normalizedStore || [item.store, item.serialNumber]
         .join(" ").toLocaleLowerCase("tr-TR").includes(normalizedStore);
-      const matchesMinPrice = !filters.minPrice || item.price >= Number(filters.minPrice);
-      const matchesMaxPrice = !filters.maxPrice || item.price <= Number(filters.maxPrice);
-      return matchesProduct && matchesStatus && matchesCategory && matchesPurchase && matchesExpiry
-        && matchesStore && matchesMinPrice && matchesMaxPrice;
+      const matchesPrice = !normalizedPrice || String(item.price).includes(normalizedPrice);
+      return matchesProduct && matchesStatus && matchesCategory
+        && matchesPurchaseStart && matchesPurchaseEnd && matchesExpiryStart && matchesExpiryEnd
+        && matchesStore && matchesPrice;
     });
     return [...result].sort((a, b) => getDaysRemaining(a) - getDaysRemaining(b));
   }, [items, filters]);
-
-  const purchaseDateOptions = useMemo(() => [...new Set(items.map(item => item.purchaseDate))].sort(), [items]);
-  const expiryDateOptions = useMemo(() => [...new Set(items.map(item =>
-    addMonths(item.purchaseDate, item.warrantyMonths).toISOString().slice(0, 10),
-  ))].sort(), [items]);
 
   const setFilter = <K extends keyof typeof filters>(key: K, value: (typeof filters)[K]) =>
     setFilters(current => ({ ...current, [key]: value }));
 
   const clearFilters = () => setFilters({
-    product: "", category: "Tümü", status: "all", purchaseDate: "", expiryDate: "",
-    store: "", minPrice: "", maxPrice: "",
+    product: "", category: "Tümü", status: "all", purchaseStart: "", purchaseEnd: "",
+    expiryStart: "", expiryEnd: "", store: "", price: "",
   });
 
   const hasActiveFilters = filters.product || filters.category !== "Tümü" || filters.status !== "all"
-    || filters.purchaseDate || filters.expiryDate || filters.store || filters.minPrice || filters.maxPrice;
+    || filters.purchaseStart || filters.purchaseEnd || filters.expiryStart || filters.expiryEnd
+    || filters.store || filters.price;
+
+  const resetLocalStorage = () => {
+    const confirmed = window.confirm("Eklediğin tüm kayıtlar silinip örnek veriler yeniden yüklensin mi?");
+    if (!confirmed) return;
+    localStorage.removeItem(STORAGE_KEY);
+    setItems(demoItems.map(item => ({ ...item })));
+    clearFilters();
+    setToast("LocalStorage sıfırlandı ve örnek veriler yüklendi.");
+  };
 
   const openCreate = () => {
     setEditing(null);
@@ -198,8 +207,7 @@ function App() {
             </div>
           </div>
 
-          {filtered.length ? (
-            <div className="table-scroll" tabIndex={0} aria-label="Garanti kayıtları tablosu">
+          <div className="table-scroll" tabIndex={0} aria-label="Garanti kayıtları tablosu">
               <table className="warranty-table">
                 <thead>
                   <tr className="column-labels">
@@ -216,30 +224,37 @@ function App() {
                     <th><label className="table-search"><Search size={15} /><input aria-label="Ürün sütununu filtrele" value={filters.product} onChange={e => setFilter("product", e.target.value)} placeholder="Ürün veya marka" /></label></th>
                     <th><select aria-label="Kategori sütununu filtrele" value={filters.category} onChange={e => setFilter("category", e.target.value)}><option>Tümü</option>{categories.map(category => <option key={category}>{category}</option>)}</select></th>
                     <th><select aria-label="Durum sütununu filtrele" value={filters.status} onChange={e => setFilter("status", e.target.value as typeof filters.status)}><option value="all">Tümü</option><option value="active">Devam ediyor</option><option value="expiring">Yakında bitiyor</option><option value="expired">Süresi doldu</option></select></th>
-                    <th><select aria-label="Satın alma tarihini filtrele" value={filters.purchaseDate} onChange={e => setFilter("purchaseDate", e.target.value)}><option value="">Tüm tarihler</option>{purchaseDateOptions.map(date => <option key={date} value={date}>{formatDate(date)}</option>)}</select></th>
-                    <th><select aria-label="Garanti bitiş tarihini filtrele" value={filters.expiryDate} onChange={e => setFilter("expiryDate", e.target.value)}><option value="">Tüm tarihler</option>{expiryDateOptions.map(date => <option key={date} value={date}>{formatDate(date)}</option>)}</select></th>
+                    <th><div className="date-range-filter"><label><span>Başlangıç</span><input aria-label="Satın alma başlangıç tarihi" type="date" value={filters.purchaseStart} max={filters.purchaseEnd || undefined} onChange={e => setFilter("purchaseStart", e.target.value)} /></label><label><span>Bitiş</span><input aria-label="Satın alma bitiş tarihi" type="date" value={filters.purchaseEnd} min={filters.purchaseStart || undefined} onChange={e => setFilter("purchaseEnd", e.target.value)} /></label></div></th>
+                    <th><div className="date-range-filter"><label><span>Başlangıç</span><input aria-label="Garanti bitiş başlangıç tarihi" type="date" value={filters.expiryStart} max={filters.expiryEnd || undefined} onChange={e => setFilter("expiryStart", e.target.value)} /></label><label><span>Bitiş</span><input aria-label="Garanti bitiş son tarihi" type="date" value={filters.expiryEnd} min={filters.expiryStart || undefined} onChange={e => setFilter("expiryEnd", e.target.value)} /></label></div></th>
                     <th><input aria-label="Mağaza veya seri numarasını filtrele" value={filters.store} onChange={e => setFilter("store", e.target.value)} placeholder="Mağaza veya seri no" /></th>
-                    <th><div className="price-filter"><input aria-label="En düşük fiyat" type="number" min="0" value={filters.minPrice} onChange={e => setFilter("minPrice", e.target.value)} placeholder="Min" /><input aria-label="En yüksek fiyat" type="number" min="0" value={filters.maxPrice} onChange={e => setFilter("maxPrice", e.target.value)} placeholder="Maks" /></div></th>
+                    <th><input aria-label="Değer sütununu filtrele" inputMode="numeric" value={filters.price} onChange={e => setFilter("price", e.target.value)} placeholder="Değer ara" /></th>
                     <th>{hasActiveFilters && <button className="filter-reset-icon" onClick={clearFilters} aria-label="Tüm filtreleri temizle"><X size={17} /></button>}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(item => <WarrantyRow key={item.id} item={item} onEdit={() => { setEditing(item); setModalOpen(true); }} onDelete={() => setDeleting(item)} />)}
+                  {filtered.length ? filtered.map(item => <WarrantyRow key={item.id} item={item} onEdit={() => { setEditing(item); setModalOpen(true); }} onDelete={() => setDeleting(item)} />) : (
+                    <tr className="table-empty-row">
+                      <td colSpan={8}>
+                        <div className="table-empty-state">
+                          <strong>Eşleşen kayıt bulunamadı</strong>
+                          <span>Bitiş tarihini seçebilir veya diğer filtreleri değiştirebilirsin.</span>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
-          ) : (
-            <div className="empty-state">
-              <PackageOpen size={42} />
-              <h3>Eşleşen kayıt bulunamadı</h3>
-              <p>Arama veya filtrelerini değiştirerek yeniden deneyebilirsin.</p>
-              <button className="secondary-button" onClick={clearFilters}>Filtreleri temizle</button>
-            </div>
-          )}
+        </section>
+
+        <section className="storage-actions" aria-label="Yerel veri işlemleri">
+          <button className="storage-reset-button" onClick={resetLocalStorage}>
+            <RotateCcw size={17} /> Örnek verileri yeniden yükle (LocalStorage sıfırla)
+          </button>
         </section>
       </main>
 
-      <footer><ShieldCheck size={16} /> Garantim · Garanti bilgilerin yalnızca bu tarayıcıda saklanır.</footer>
+      <footer><ShieldCheck size={16} /> Veriler LocalStorage'da, yalnızca bu tarayıcıda saklanır.</footer>
 
       {modalOpen && <WarrantyModal initial={editing ?? undefined} onClose={() => { setModalOpen(false); setEditing(null); }} onSave={saveItem} />}
       {deleting && <DeleteDialog item={deleting} onCancel={() => setDeleting(null)} onConfirm={confirmDelete} />}
