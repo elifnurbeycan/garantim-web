@@ -2,6 +2,10 @@
 
 Garantim, satın alınan ürünlerin garanti sürelerini tek yerde takip etmeyi sağlayan responsive bir React uygulamasıdır.
 
+## Canlı demo
+
+[Garantim uygulamasını Netlify üzerinde görüntüle](https://unique-cendol-5d31de.netlify.app/)
+
 ## Ekran görüntüleri
 
 ### Garanti takip paneli
